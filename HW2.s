@@ -40,43 +40,31 @@ end:
 # Input: a0 = n
 # Output: a0 = fibonacci(n)
 # ========================================
+# fibonacci(int n):
+#  a0 = n  -->  a0 = fib(n)
 fibonacci:
-    # -- Setup stack frame --
-    addi sp, sp, -16      # allocate space on stack
-    sw ra, 12(sp)         # save return address
-    sw s0, 8(sp)          # save s0 (used for input)
-    sw s1, 4(sp)          # save s1 (first)
-    sw s2, 0(sp)          # save s2 (second)
+    addi sp, sp, -16      
+    sw ra, 12(sp)         
+    sw s0, 8(sp)          
+    sw s1, 4(sp)
+    sw s2, 0(sp)
 
-    # -- Initialize fibonacci vars --
+    mv s0, a0             # save argument n
     li s1, 0              # first = 0
     li s2, 1              # second = 1
-    mv s0, a0             # s0 = n (copy input)
 
-    # -- Handle base case --
-    li t0, 1
-    ble s0, t0, fib_base_case  # if n <= 1, return n
+    # --- TEMP: force function to return 99 always ---
+    li a0, 99             # return value = 99
+    j fib_done             # skip everything else
 
-    # -- Start loop from i = 2 to n --
-    li t1, 2              # t1 = i = 2
-fib_loop:
-    add t2, s1, s2        # result = first + second
-    mv s1, s2             # first = second
-    mv s2, t2             # second = result
-    addi t1, t1, 1        # i++
-    ble t1, s0, fib_loop  # while i <= n
-
-    mv a0, t2             # return value = result
-    j fib_done
-
+    # --- Base case (disabled for now) ---
 fib_base_case:
-    mv a0, s0             # return n if n <= 1
+    mv a0, s0             # return n (original code)
 
 fib_done:
-    # -- Restore stack and return --
-    lw ra, 12(sp)         # restore return address
+    lw ra, 12(sp)         
     lw s0, 8(sp)
     lw s1, 4(sp)
     lw s2, 0(sp)
-    addi sp, sp, 16       # pop stack
+    addi sp, sp, 16
     ret
