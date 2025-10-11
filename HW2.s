@@ -1,5 +1,6 @@
 # ==========================================
 # Himadri Saha
+# Md Nezad
 # EECE 4821 - Computer Architecture
 # HW 2
 # ==========================================
@@ -40,8 +41,6 @@ end:
 # Input: a0 = n
 # Output: a0 = fibonacci(n)
 # ========================================
-# fibonacci(int n):
-#  a0 = n  -->  a0 = fib(n)
 fibonacci:
     addi sp, sp, -16      
     sw ra, 12(sp)         
@@ -53,11 +52,29 @@ fibonacci:
     li s1, 0              # first = 0
     li s2, 1              # second = 1
 
-    # --- TEMP: force function to return 99 always ---
-    li a0, 99             # return value = 99
-    j fib_done             # skip everything else
+    mv t0, a0             # save argument n in t0
+    li s1, 0              # first = 0
+    li s2, 1              # second = 1
 
-    # --- Base case (disabled for now) ---
+    # --- Base case (if n <= 1) return n ---
+    li t1, 1
+    ble t0, t1, fib_base_case
+
+    # --- Loop from i = 2 to n ---
+    li t3, 2              # i = 2
+
+fib_loop:
+    bgt t3, t0, fib_loop_end    # if i > n, exit loop
+    add s0, s1, s2              # result = first + second
+    mv s1, s2                   # first = second
+    mv s2, s0                   # second = result
+    addi t3, t3, 1              # i++
+    j fib_loop
+
+fib_loop_end:             
+    mv a0, s2             # return result
+    j fib_done
+    
 fib_base_case:
     mv a0, s0             # return n (original code)
 
