@@ -150,5 +150,5 @@ Have a commented program header with your group members' names and assignment nu
 The program should be well commented on so the grader can understand what you are doing without needing additional explanation.
 
 # Q3
-## Please provide details about the additional data structures (global variables, structures, etc.) used for tracking decoded instructions, along with any extra functions you have implemented beyond the provided template. Additionally, share the decoding mechanism you employed in your implementation, such as the specific comparison or bit manipulation methods used to extract the opcode, rs1, rs2, and other fields in each instruction type (or format). The information provided in this question should align with your submitted code.
+#### Please provide details about the additional data structures (global variables, structures, etc.) used for tracking decoded instructions, along with any extra functions you have implemented beyond the provided template. Additionally, share the decoding mechanism you employed in your implementation, such as the specific comparison or bit manipulation methods used to extract the opcode, rs1, rs2, and other fields in each instruction type (or format). The information provided in this question should align with your submitted code.
 
