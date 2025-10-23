@@ -1,26 +1,19 @@
-/*
-  Himadri Saha & Md Nezad
-  EECE 4821 - Computer Architecture
-  HW 3
-*/
-
-/* Imports */
 #include <stdio.h>
-#include "shell.h"
+#include <stdint.h>
 
-/* Vars */
-uint32_t INSTRUCTION;                           // currently fetched instruction
-uint32_t RUN_BIT;                               // Set to 0 when no instruction to process (by process_instruction())
-uint32_t opcode, rd, rs1, rs2, funct3, funct7;  // decode feilds  
-int32_t rs1_val, rs2_val;                       // decode registers
-int32_t imm;                                    // immediate feild
+// Declare globals from sim.c
+uint32_t INSTRUCTION;
+uint32_t opcode, rd, rs1, rs2, funct3, funct7;
+int32_t imm;
+uint32_t rs1_val, rs2_val;
+int RUN_BIT = 1;
 
-void fetch()
-{
-  // Increment 32-bit instruction from PC memory by 4 for the next instruction
-  INSTRUCTION = mem_read_32(CURRENT_STATE.PC);
-  NEXT_STATE.PC = CURRENT_STATE.PC + 4;
-} 
+typedef struct {
+    uint32_t PC;
+    uint32_t REGS[32];
+} CPU_State;
+
+CPU_State CURRENT_STATE, NEXT_STATE;
 
 void decode()
 {
@@ -85,17 +78,20 @@ void decode()
 
 }
 
-void execute()
-{
-  
-}
+int main() {
+    // Example: addi x5, x6, 12 -> 0x00C30313
+    INSTRUCTION = 0x00C30313;
+    CURRENT_STATE.REGS[6] = 42;  // x6 = 42
 
-void process_instruction()
-{
-  /* execute one instruction here. You should use CURRENT_STATE and modify
-   * values in NEXT_STATE. You can call mem_read_32() and mem_write_32() to
-   * access memory. */
-  fetch();
-  decode();
-  execute();
+    decode();
+
+    printf("opcode = 0x%x\n", opcode);
+    printf("rd     = %d\n", rd);
+    printf("rs1    = %d (val=%d)\n", rs1, rs1_val);
+    printf("rs2    = %d (val=%d)\n", rs2, rs2_val);
+    printf("funct3 = 0x%x\n", funct3);
+    printf("funct7 = 0x%x\n", funct7);
+    printf("imm    = %d\n", imm);
+
+    return 0;
 }
