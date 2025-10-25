@@ -12,7 +12,7 @@ uint32_t opcode, rd, rs1, rs2, funct3, funct7;
 int32_t imm;
 int32_t rs1_val, rs2_val;
 
-/******** Sign-extension helper ********/
+/* Sign-extension helper */
 static inline int32_t signext(uint32_t val, int bits) {
     uint32_t mask = (bits == 32) ? 0xFFFFFFFFu : ((1u << bits) - 1u);
     uint32_t m = 1u << (bits - 1);
@@ -20,18 +20,18 @@ static inline int32_t signext(uint32_t val, int bits) {
     return (int32_t)((val ^ m) - m);
 }
 
-/******** Write register helper ********/
+/* Write register helper */
 static inline void write_reg(uint32_t r, int32_t value){
     if (r != 0) NEXT_STATE.REGS[r] = value; // x0 hard-wired to 0
 }
 
-/******** FETCH ********/
+/* FETCH */
 void fetch() {
     INSTRUCTION = mem_read_32(CURRENT_STATE.PC);
     NEXT_STATE.PC = CURRENT_STATE.PC + 4; // default
 }
 
-/******** DECODE ********/
+/* DECODE */
 void decode() {
     opcode = INSTRUCTION & 0x7F;
     rd     = (INSTRUCTION >> 7) & 0x1F;
@@ -95,7 +95,7 @@ void decode() {
     }
 }
 
-/******** EXECUTE ********/
+/* EXECUTE */
 void execute() {
     uint32_t pc = CURRENT_STATE.PC;
 
@@ -145,7 +145,7 @@ void execute() {
     NEXT_STATE.REGS[0] = 0; // enforce x0 = 0
 }
 
-/******** Top-level ********/
+/* Top-level */
 void process_instruction() {
 
     fetch();
