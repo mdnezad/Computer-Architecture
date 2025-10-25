@@ -1,118 +1,92 @@
 #include <stdio.h>
 #include <stdint.h>
 
-// Declare globals from sim.c (matching your current shapes)
 uint32_t INSTRUCTION;
 uint32_t opcode, rd, rs1, rs2, funct3, funct7;
-int32_t  imm;
-uint32_t rs1_val, rs2_val;
-int RUN_BIT = 1;
+int32_t imm;
 
-typedef struct {
-    uint32_t PC;
-    uint32_t REGS[32];
-} CPU_State;
-
-CPU_State CURRENT_STATE, NEXT_STATE;
-
-// -------- helpers --------
-static inline int32_t signext(uint32_t val, int bits) {
+static inline int32_t signext(uint32_t val, int bits){
     uint32_t m = 1u << (bits - 1);
-    uint32_t mask = (bits == 32) ? 0xFFFFFFFFu : ((1u << bits) - 1u);
+    uint32_t mask = (bits == 32)?0xFFFFFFFFu:((1u<<bits)-1u);
     val &= mask;
     return (int32_t)((val ^ m) - m);
 }
 
-void decode()
-{
-  /* Extract common fields and registers */
-  opcode = INSTRUCTION & 0x7F;             // [6:0]
-  rd     = (INSTRUCTION >> 7)  & 0x1F;     // [11:7]
-  funct3 = (INSTRUCTION >> 12) & 0x07;     // [14:12]
-  rs1    = (INSTRUCTION >> 15) & 0x1F;     // [19:15]
-  rs2    = (INSTRUCTION >> 20) & 0x1F;     // [24:20]
-  funct7 = (INSTRUCTION >> 25) & 0x7F;     // [31:25]
+void decode() {
+    opcode = INSTRUCTION & 0x7F;
+    rd     = (INSTRUCTION >> 7)  & 0x1F;
+    funct3 = (INSTRUCTION >> 12) & 0x07;
+    rs1    = (INSTRUCTION >> 15) & 0x1F;
+    rs2    = (INSTRUCTION >> 20) & 0x1F;
+    funct7 = (INSTRUCTION >> 25) & 0x7F;
 
-  rs1_val = CURRENT_STATE.REGS[rs1];
-  rs2_val = CURRENT_STATE.REGS[rs2];
+    switch(opcode) {
+        case 0x33: imm = 0; break;
 
-  /* Decode immediates per type */
-  switch(opcode) {
-    // R-type: add, slt
-    case 0x33:
-      imm = 0;
-      break;
+        case 0x13:
+            if (funct3 == 0x1)
+                imm = (INSTRUCTION >> 20) & 0x1F; // slli shamt
+            else
+                imm = signext(INSTRUCTION >> 20, 12); // addi
+            break;
 
-    // I-type: addi, slli
-    case 0x13:
-      if (funct3 == 0x1) {
-        // SLLI: shamt = imm[4:0] (funct7 must be 0x00 for RV32I)
-        imm = (INSTRUCTION >> 20) & 0x1F;
-      } else {
-        // ADDI: 12-bit signed immediate
-        imm = signext(INSTRUCTION >> 20, 12);
-      }
-      break;
+        case 0x23: {
+            uint32_t high = ((INSTRUCTION >> 25)&0x7F)<<5;
+            uint32_t low  = (INSTRUCTION>>7)&0x1F;
+            imm = signext(high|low,12);
+            break;
+        }
 
-    // S-type: sw
-    case 0x23: {
-      uint32_t i12 = ((INSTRUCTION >> 25) & 0x7F) << 5;  // [31:25] -> imm[11:5]
-      uint32_t i5  = (INSTRUCTION >> 7)  & 0x1F;         // [11:7]  -> imm[4:0]
-      imm = signext(i12 | i5, 12);
-      break;
+        case 0x63: {
+            uint32_t bit12=(INSTRUCTION>>31)&1;
+            uint32_t bit11=(INSTRUCTION>>7)&1;
+            uint32_t bits10_5=(INSTRUCTION>>25)&0x3F;
+            uint32_t bits4_1=(INSTRUCTION>>8)&0x0F;
+            uint32_t raw = (bit12<<12)|(bit11<<11)|(bits10_5<<5)|(bits4_1<<1);
+            imm = signext(raw,13);
+            break;
+        }
+
+        case 0x17:
+            imm = (int32_t)(INSTRUCTION & 0xFFFFF000);
+            break;
+
+        case 0x6F: {
+            uint32_t bit20=(INSTRUCTION>>31)&1;
+            uint32_t bits19_12=(INSTRUCTION>>12)&0xFF;
+            uint32_t bit11=(INSTRUCTION>>20)&1;
+            uint32_t bits10_1=(INSTRUCTION>>21)&0x3FF;
+            uint32_t raw=(bit20<<20)|(bits19_12<<12)|(bit11<<11)|(bits10_1<<1);
+            imm = signext(raw,21);
+            break;
+        }
     }
-
-    // SB-type: bne
-    case 0x63: {
-      // imm = [31][7][30:25][11:8] << 1, sign-extended (13 bits total)
-      uint32_t b12   = (INSTRUCTION >> 31) & 0x1;     // imm[12]
-      uint32_t b11   = (INSTRUCTION >> 7)  & 0x1;     // imm[11]
-      uint32_t b10_5 = (INSTRUCTION >> 25) & 0x3F;    // imm[10:5]
-      uint32_t b4_1  = (INSTRUCTION >> 8)  & 0x0F;    // imm[4:1]
-      uint32_t raw   = (b12 << 12) | (b11 << 11) | (b10_5 << 5) | (b4_1 << 1);
-      imm = signext(raw, 13);
-      break;
-    }
-
-    // U-type: auipc
-    case 0x17:
-      // upper 20 bits << 12 (already aligned)
-      imm = (int32_t)(INSTRUCTION & 0xFFFFF000u);
-      break;
-
-    // UJ-type: jal
-    case 0x6F: {
-      // imm = [31][19:12][20][30:21] << 1, sign-extended (21 bits total)
-      uint32_t b20    = (INSTRUCTION >> 31) & 0x1;   // imm[20]
-      uint32_t b19_12 = (INSTRUCTION >> 12) & 0xFF;  // imm[19:12]
-      uint32_t b11    = (INSTRUCTION >> 20) & 0x1;   // imm[11]
-      uint32_t b10_1  = (INSTRUCTION >> 21) & 0x3FF; // imm[10:1]
-      uint32_t raw    = (b20 << 20) | (b19_12 << 12) | (b11 << 11) | (b10_1 << 1);
-      imm = signext(raw, 21);
-      break;
-    }
-
-    default:
-      // Unsupported for this test harness
-      RUN_BIT = 0;
-      break;
-  }
 }
 
-int main() {
-    // Example: addi x6, x6, 12 -> 0x00C30313 (rd=6, rs1=6, imm=12, funct3=000)
-    INSTRUCTION = 0x00C30313;
-    CURRENT_STATE.REGS[6] = 42;  // x6 = 42
+void printDecoded(const char* name){
+    printf("%s: inst=0x%08X, opcode=0x%02X, rd=%u, rs1=%u, rs2=%u, funct3=0x%X, imm=%d\n",
+           name, INSTRUCTION, opcode, rd, rs1, rs2, funct3, imm);
+}
 
-    decode();
+int main(){
+    uint32_t tests[] = {
+        0x10000917, // auipc
+        0x00090913, // addi
+        0x015ea023, // sw
+        0x002e1e93, // slli
+        0x015a0b33, // add
+        0x013e2f33, // slt
+        0xfe0f10e3, // bne (-32)
+        0x0040006f  // jal
+    };
+    const char *names[] = {
+        "auipc","addi","sw","slli","add","slt","bne","jal"
+    };
 
-    printf("opcode = 0x%x\n", opcode);
-    printf("rd     = %u\n", rd);
-    printf("rs1    = %u (val=%u)\n", rs1, rs1_val);
-    printf("rs2    = %u (val=%u)\n", rs2, rs2_val);
-    printf("funct3 = 0x%x\n", funct3);
-    printf("funct7 = 0x%x\n", funct7);
-    printf("imm    = %d (0x%x)\n", imm, (uint32_t)imm);
-
+    for(int i=0;i<8;i++){
+        INSTRUCTION=tests[i];
+        decode();
+        printDecoded(names[i]);
+    }
     return 0;
 }
