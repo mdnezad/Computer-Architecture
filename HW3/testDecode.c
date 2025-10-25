@@ -7,10 +7,12 @@
 #include <stdio.h>
 #include <stdint.h>
 
+/* Temp decode storage */
 uint32_t INSTRUCTION;
 uint32_t opcode, rd, rs1, rs2, funct3, funct7;
 int32_t imm;
 
+/* Helper for sign extension */
 static inline int32_t signext(uint32_t val, int bits){
     uint32_t m = 1u << (bits - 1);
     uint32_t mask = (bits == 32)?0xFFFFFFFFu:((1u<<bits)-1u);
@@ -18,6 +20,7 @@ static inline int32_t signext(uint32_t val, int bits){
     return (int32_t)((val ^ m) - m);
 }
 
+/* Decode just the bitfield and immediate components */
 void decode() {
     opcode = INSTRUCTION & 0x7F;
     rd     = (INSTRUCTION >> 7)  & 0x1F;
@@ -26,6 +29,7 @@ void decode() {
     rs2    = (INSTRUCTION >> 20) & 0x1F;
     funct7 = (INSTRUCTION >> 25) & 0x7F;
 
+  /* Immediate decoding */
     switch(opcode) {
         case 0x33: imm = 0; break;
 
@@ -74,6 +78,7 @@ void printDecoded(const char* name){
            name, INSTRUCTION, opcode, rd, rs1, rs2, funct3, imm);
 }
 
+/* Run decode tests using sample instructions */
 int main(){
     uint32_t tests[] = {
         0x10000917, // auipc
