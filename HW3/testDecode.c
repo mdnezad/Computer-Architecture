@@ -1,3 +1,9 @@
+/*
+  Himadri Saha & Md Nezad
+  EECE 4821 - Computer Architecture
+  HW 3
+*/
+
 #include <stdio.h>
 #include <stdint.h>
 
