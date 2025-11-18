@@ -6,6 +6,7 @@
 
 #define RISCV_REGS 32
 
+/* CPU architectural state */
 typedef struct CPU_State_Struct {
     uint32_t PC;
     int32_t REGS[RISCV_REGS];
@@ -16,12 +17,14 @@ typedef struct CPU_State_Struct {
     int FLAG_NX;
 } CPU_State;
 
+/* IF→ID pipeline register */
 typedef struct {
     uint32_t instr;
     uint32_t pc_plus4;
     int valid;
 } Pipe_Reg_IFtoDE;
 
+/* ID→EX pipeline register */
 typedef struct {
     uint32_t instr;
     uint32_t pc_plus4;
@@ -41,6 +44,7 @@ typedef struct {
     int valid;
 } Pipe_Reg_DEtoEX;
 
+/* EX→MEM pipeline register */
 typedef struct {
     uint32_t alu_result;
     int32_t store_val;
@@ -49,6 +53,7 @@ typedef struct {
     int valid;
 } Pipe_Reg_EXtoMEM;
 
+/* MEM→WB pipeline register */
 typedef struct {
     uint32_t alu_result;
     uint32_t mem_data;
@@ -61,9 +66,11 @@ typedef struct {
 extern int RUN_BIT;
 extern CPU_State CURRENT_STATE;
 
+/* Pipeline control */
 void pipe_init();
 void pipe_cycle();
 
+/* Pipeline stage functions */
 void pipe_stage_fetch();
 void pipe_stage_decode();
 void pipe_stage_execute();
