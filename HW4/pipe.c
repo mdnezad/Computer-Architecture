@@ -44,7 +44,7 @@ void pipe_cycle() {
     pipe_stage_fetch();
 }
 
-/************************ WB **************************/
+/*  WB: Write result to destination register */
 void pipe_stage_wb() {
     if (!Reg_MEMtoWB.valid) return;
 
@@ -58,7 +58,7 @@ void pipe_stage_wb() {
     stat_inst_retire++;
 }
 
-/************************ MEM *************************/
+/* MEM: Handle loads and stores */
 void pipe_stage_mem() {
     if (!Reg_EXtoMEM.valid) {
         Reg_MEMtoWB.valid = 0;
@@ -82,7 +82,7 @@ void pipe_stage_mem() {
     Reg_MEMtoWB.valid      = 1;
 }
 
-/*********************** EXECUTE ***********************/
+/* EXECUTE: Perform ALU operations */
 void pipe_stage_execute() {
     if (!Reg_DEtoEX.valid) {
         Reg_EXtoMEM.valid = 0;
@@ -129,7 +129,7 @@ void pipe_stage_execute() {
     Reg_EXtoMEM.valid      = 1;
 }
 
-/*********************** DECODE ************************/
+/* DECODE: Decode instruction and read registers */
 void pipe_stage_decode() {
     if (!Reg_IFtoDE.valid) {
         Reg_DEtoEX.valid = 0;
@@ -195,7 +195,7 @@ void pipe_stage_decode() {
     Reg_DEtoEX.valid    = 1;
 }
 
-/************************ FETCH *************************/
+/* FETCH: Read instruction from memory and update PC */
 void pipe_stage_fetch() {
     uint32_t instr = mem_read_32(CURRENT_STATE.PC);
 
