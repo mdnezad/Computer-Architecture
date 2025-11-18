@@ -17,160 +17,201 @@
 */ 
 #include "pipe.h"
 #include "shell.h"
-#include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include <assert.h>
+#include <stdio.h>
 
-/* global pipeline state */
-// CPU_State CURRENT_STATE;
-Pipe_Reg_IFtoDE Reg_IFtoDE;
-Pipe_Reg_DEtoEX Reg_DEtoEX;
+/* pipeline registers */
+Pipe_Reg_IFtoDE  Reg_IFtoDE;
+Pipe_Reg_DEtoEX  Reg_DEtoEX;
 Pipe_Reg_EXtoMEM Reg_EXtoMEM;
 Pipe_Reg_MEMtoWB Reg_MEMtoWB;
 
-void pipe_init()
-{
-  memset(&CURRENT_STATE, 0, sizeof(CPU_State));
-  CURRENT_STATE.PC = 0x00000000;
+void pipe_init() {
+    memset(&CURRENT_STATE, 0, sizeof(CPU_State));
+    CURRENT_STATE.PC = 0x00000000;
+
+    Reg_IFtoDE.valid  = 0;
+    Reg_DEtoEX.valid  = 0;
+    Reg_EXtoMEM.valid = 0;
+    Reg_MEMtoWB.valid = 0;
 }
 
-void pipe_cycle()
-{
-  pipe_stage_wb();
-  pipe_stage_mem();
-  pipe_stage_execute();
-  pipe_stage_decode();
-  pipe_stage_fetch();
+void pipe_cycle() {
+    pipe_stage_wb();
+    pipe_stage_mem();
+    pipe_stage_execute();
+    pipe_stage_decode();
+    pipe_stage_fetch();
 }
 
-void pipe_stage_wb()
-{
+/************************ WB **************************/
+void pipe_stage_wb() {
+    if (!Reg_MEMtoWB.valid) return;
+
+    if (Reg_MEMtoWB.reg_write && Reg_MEMtoWB.rd != 0) {
+        if (Reg_MEMtoWB.is_load)
+            CURRENT_STATE.REGS[Reg_MEMtoWB.rd] = Reg_MEMtoWB.mem_data;
+        else
+            CURRENT_STATE.REGS[Reg_MEMtoWB.rd] = Reg_MEMtoWB.alu_result;
+    }
+
+    stat_inst_retire++;
 }
 
-void pipe_stage_mem()
-{
+/************************ MEM *************************/
+void pipe_stage_mem() {
+    if (!Reg_EXtoMEM.valid) {
+        Reg_MEMtoWB.valid = 0;
+        return;
+    }
+
+    uint32_t mem_data = 0;
+
+    if (Reg_EXtoMEM.is_load) {
+        mem_data = mem_read_32(Reg_EXtoMEM.alu_result);
+    }
+    else if (Reg_EXtoMEM.is_store) {
+        mem_write_32(Reg_EXtoMEM.alu_result, Reg_EXtoMEM.store_val);
+    }
+
+    Reg_MEMtoWB.alu_result = Reg_EXtoMEM.alu_result;
+    Reg_MEMtoWB.mem_data   = mem_data;
+    Reg_MEMtoWB.rd         = Reg_EXtoMEM.rd;
+    Reg_MEMtoWB.is_load    = Reg_EXtoMEM.is_load;
+    Reg_MEMtoWB.reg_write  = Reg_EXtoMEM.reg_write;
+    Reg_MEMtoWB.valid      = 1;
 }
 
-void pipe_stage_execute()
-{
+/*********************** EXECUTE ***********************/
+void pipe_stage_execute() {
+    if (!Reg_DEtoEX.valid) {
+        Reg_EXtoMEM.valid = 0;
+        return;
+    }
+
+    uint32_t alu = 0;
+    int op = Reg_DEtoEX.opcode;
+
+    switch (op) {
+        case 0x33:  // add
+            alu = Reg_DEtoEX.rv1 + Reg_DEtoEX.rv2;
+            break;
+
+        case 0x13:  // addi
+            alu = Reg_DEtoEX.rv1 + Reg_DEtoEX.imm;
+            break;
+
+        case 0x03:  // lw
+        case 0x23:  // sw
+            alu = Reg_DEtoEX.rv1 + Reg_DEtoEX.imm;
+            break;
+
+        case 0x63:  // blt
+            alu = (Reg_DEtoEX.rv1 < Reg_DEtoEX.rv2);
+            break;
+
+        case 0x17:  // auipc
+            alu = (Reg_DEtoEX.pc_plus4 - 4) + Reg_DEtoEX.imm;
+            break;
+
+        case 0x6F:  // jal (return address = pc+4)
+            alu = Reg_DEtoEX.pc_plus4;
+            break;
+    }
+
+    Reg_EXtoMEM.alu_result = alu;
+    Reg_EXtoMEM.store_val  = Reg_DEtoEX.rv2;
+    Reg_EXtoMEM.rd         = Reg_DEtoEX.rd;
+    Reg_EXtoMEM.is_load    = Reg_DEtoEX.is_load;
+    Reg_EXtoMEM.is_store   = Reg_DEtoEX.is_store;
+    Reg_EXtoMEM.is_jal     = Reg_DEtoEX.is_jal;
+    Reg_EXtoMEM.reg_write  = Reg_DEtoEX.reg_write;
+    Reg_EXtoMEM.valid      = 1;
 }
 
-/* Decode instruction (from fetch), reads regesiters, and generates control signals for ALU */
-void pipe_stage_decode()
-{
-  // Check if its valid??
-  if (!Reg_IFtoDE.valid) {
-    Reg_DEtoEX.valid = 0;
-    return;
-  }
+/*********************** DECODE ************************/
+void pipe_stage_decode() {
+    if (!Reg_IFtoDE.valid) {
+        Reg_DEtoEX.valid = 0;
+        return;
+    }
 
-  // Get instruction and opcode 
-  uint32_t instr = Reg_IFtoDE.instr;
-  int opcode = instr & 0x7F;
+    uint32_t instr = Reg_IFtoDE.instr;
+    int op = instr & 0x7F;
 
-  // Get instruction feilds
-  int rd = (instr >> 7) & 0x1F;
-  int funct3 = (instr >> 12) & 0x7;
-  int rs1 = (instr >> 15) & 0x1F;
-  int rs2 = (instr >> 20) & 0x1F;
-  int funct7 = instr >> 25;
+    int rd  = (instr >> 7)  & 0x1F;
+    int f3  = (instr >> 12) & 0x7;
+    int rs1 = (instr >> 15) & 0x1F;
+    int rs2 = (instr >> 20) & 0x1F;
 
-  // Determine what kind of instruction it is
-  int32_t imm = 0;
-  int is_load=0, is_store=0, is_branch=0, is_jal=0, is_auipc=0, reg_write=0;
-  int alu_op=0;
-  switch(opcode) {
-    case 0x33:  // R-Type add
-      alu_op = 1;
-      reg_write = 1;  
-      break;
+    int32_t imm = 0;
+    int isL=0, isS=0, isB=0, isJ=0, isU=0, wr=0;
 
-    case 0x13: // addi
-      imm = (int32_t)(instr & 0xFFF00000) >> 20;
-      alu_op = 2;
-      reg_write = 1;  
-      break;
+    switch (op) {
+        case 0x33: wr=1; break; // add
+        case 0x13: wr=1; imm=(int32_t)instr>>20; break; // addi
+        case 0x03: isL=1; wr=1; imm=(int32_t)instr>>20; break; // lw
+        case 0x23: // sw
+            imm = ((instr>>25)<<5)|((instr>>7)&0x1F);
+            if (imm & 0x800) imm |= 0xFFFFF000;
+            isS=1;
+            break;
+        case 0x63: // blt
+            imm = ((instr>>31)<<12)|(((instr>>7)&1)<<11)|
+                  (((instr>>25)&0x3F)<<5)|(((instr>>8)&0xF)<<1);
+            if (imm & 0x1000) imm |= 0xFFFFE000;
+            isB=1;
+            break;
+        case 0x17: // auipc
+            imm = (int32_t)(instr & 0xFFFFF000);
+            isU=1; wr=1;
+            break;
+        case 0x6F: // jal
+            isJ=1; wr=1;
+            imm = ((instr>>31)<<20)|(((instr>>12)&0xFF)<<12)|
+                  (((instr>>20)&1)<<11)|(((instr>>21)&0x3FF)<<1);
+            if (imm & 0x100000) imm |= 0xFFE00000;
+            break;
+    }
 
-    case 0x03: // lw
-      imm = (int32_t)(instr & 0xFFF00000) >> 20;
-      is_load = 1;
-      reg_write = 1;
-      break;
+    Reg_DEtoEX.instr     = instr;
+    Reg_DEtoEX.pc_plus4  = Reg_IFtoDE.pc_plus4;
+    Reg_DEtoEX.opcode    = op;
 
-    case 0x23: // sw
-      imm = (((instr >> 25) & 0x7F) << 5) | ((instr >> 7) & 0x1F);
-      if (imm & 0x800) {
-        imm |= 0xFFFFF000;
-      }
-      is_store = 1;
-      break;
+    Reg_DEtoEX.rd  = rd;
+    Reg_DEtoEX.rs1 = rs1;
+    Reg_DEtoEX.rs2 = rs2;
 
-    case 0x63: // blt
-      is_branch = 1;
-      imm = ((instr >> 31) << 12) |
-            (((instr >> 7) & 1) << 11) |
-            (((instr >> 25) & 0x3F) << 5) |
-            (((instr >> 8) & 0xF) << 1);
-      if (imm & 0x1000) {
-        imm |= 0xFFFFE000;
-      }
-      break;
+    Reg_DEtoEX.imm = imm;
+    Reg_DEtoEX.rv1 = CURRENT_STATE.REGS[rs1];
+    Reg_DEtoEX.rv2 = CURRENT_STATE.REGS[rs2];
 
-    case 0x17: // auipc
-      imm = (int32_t)(instr & 0xFFFFF000);
-      is_auipc = 1;
-      reg_write = 1;
-      break;
-
-    case 0x6F: // jal
-      is_jal = 1;
-      reg_write = 1;
-      imm = ((instr >> 31) << 20) |
-            (((instr >> 12) & 0xFF) << 12) |
-            (((instr >> 20) & 1) << 11) |
-            (((instr >> 21) & 0x3FF) << 1);
-      if (imm & 0x100000) {
-        imm |= 0xFFE00000;
-      }
-      break;
-
-  }
-
-  // Place in DEtoEX reg
-  Reg_DEtoEX.instr = instr;
-  Reg_DEtoEX.pc_plus4 = Reg_IFtoDE.pc_plus4;
-  
-  Reg_DEtoEX.opcode = opcode;
-  Reg_DEtoEX.rd = rd;
-  Reg_DEtoEX.rs1 = rs1;
-  Reg_DEtoEX.rs2 = rs2;
-  Reg_DEtoEX.imm = imm;
-
-  Reg_DEtoEX.reg_val1 = CURRENT_STATE.REGS[rs1];
-  Reg_DEtoEX.reg_val2 = CURRENT_STATE.REGS[rs2];
-
-  Reg_DEtoEX.is_load = is_load;
-  Reg_DEtoEX.is_store = is_store;
-  Reg_DEtoEX.is_branch = is_branch;
-  Reg_DEtoEX.is_jal = is_jal;
-  Reg_DEtoEX.is_auipc = is_auipc;
-  Reg_DEtoEX.reg_write = reg_write;
-
-  Reg_DEtoEX.valid = 1;
-
+    Reg_DEtoEX.is_load  = isL;
+    Reg_DEtoEX.is_store = isS;
+    Reg_DEtoEX.is_branch= isB;
+    Reg_DEtoEX.is_jal   = isJ;
+    Reg_DEtoEX.is_auipc = isU;
+    Reg_DEtoEX.reg_write= wr;
+    Reg_DEtoEX.valid    = 1;
 }
 
-/* Send next instruction (+4) to decode */
-void pipe_stage_fetch()
-{
-  // Get current instruction
-  uint32_t instr = mem_read_32(CURRENT_STATE.PC);
-  
-  // update Pipe_Reg_IFtoDE registers
-  Pipe_Reg_IFtoDE.instr = instr;
-  Pipe_Reg_IFtoDE.pc_plus4 = instr + 4;
+/************************ FETCH *************************/
+void pipe_stage_fetch() {
+    uint32_t instr = mem_read_32(CURRENT_STATE.PC);
 
-  // Update current state with next instruction
-  CURRENT_STATE.PC = Pipe_Reg_IFtoDE.pc_plus4;
+    Reg_IFtoDE.instr   = instr;
+    Reg_IFtoDE.pc_plus4= CURRENT_STATE.PC + 4;
+    Reg_IFtoDE.valid   = 1;
+
+    CURRENT_STATE.PC += 4;
+
+    /* HALT condition: memory returns 0 and pipeline empty */
+    if (instr == 0 &&
+        !Reg_IFtoDE.valid &&
+        !Reg_DEtoEX.valid &&
+        !Reg_EXtoMEM.valid &&
+        !Reg_MEMtoWB.valid)
+    {
+        RUN_BIT = 0;
+    }
 }
